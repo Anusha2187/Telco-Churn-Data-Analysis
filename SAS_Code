@@ -1,0 +1,215 @@
+LIBNAME HW4 'E:\Users\nxb200020\Desktop';
+
+PROC IMPORT OUT= HW4.Churn
+            DATAFILE= "E:\Users\nxb200020\Desktop\HW4\Churn.csv"
+			DBMS=CSV REPLACE;
+	GETNAMES=YES;
+	DATAROW=2;
+RUN;
+
+/*generating the working dataset in Work library */
+
+data Churn;
+ set HW4.Churn ;
+run;
+
+/*generating the summary statistics for the data */
+proc means data=Churn n mean stddev min p25 median p75 max maxdec=2;
+ 
+proc contents data=Churn;
+run;
+
+/*Summary Statistics using PROC tabulate */
+proc tabulate data= Churn ;
+  var gender SeniorCitizen Partner Dependents tenure PhoneService
+MultipleLines InternetService OnlineSecurity OnlineBackup DeviceProtection
+TechSupport StreamingTV StreamingMovies Contract PaperlessBilling
+PaymentMethod MonthlyCharges TotalCharges Churn; *variables described by the table;
+  table gender SeniorCitizen Partner Dependents tenure PhoneService
+MultipleLines InternetService OnlineSecurity OnlineBackup DeviceProtection
+TechSupport StreamingTV StreamingMovies Contract PaperlessBilling
+PaymentMethod MonthlyCharges TotalCharges Churn,(N Mean StdDev Min p25 Median p75 Max);
+ title 'Sum of each variable';
+run;
+
+
+/* Splitting the data into training and test datasets */
+proc surveyselect data=Churn out=Churn_sampled outall samprate=0.8 seed=2;
+run;
+
+data Churn_training Churn_test;
+ set Churn_sampled;
+ if selected then output Churn_training;
+ else output Churn_test;
+run;
+ods rtf file='result';
+
+/*Linear Probability Model using linear regression */
+
+proc glm data=Churn_sampled ;
+  class SeniorCitizen(ref='0') MultipleLines(ref='0') InternetService(ref='0') OnlineSecurity(ref='0')
+  TechSupport(ref='0') StreamingTV(ref='0') StreamingMovies(ref='0') Contract(ref='0') PaymentMethod Contract(ref='0')
+  PaperlessBilling(ref='0');
+  model churn = SeniorCitizen tenure MultipleLines InternetService OnlineSecurity TechSupport StreamingTv StreamingMovies Contract PaperlessBilling PaymentMethod MonthlyCharges TotalCharges;
+  weight selected;
+  run;
+  quit;
+  ods rtf close;
+
+
+/*ASE in train Vs. test data */
+/* Forward selection with significant level of coefficients as criteria */
+proc glmselect data=Churn_training testdata=Churn_test plots=all;
+  class SeniorCitizen(ref='0') MultipleLines(ref='0') InternetService(ref='0')
+OnlineSecurity(ref='0') TechSupport(ref='0') StreamingTV(ref='0') StreamingMovies(ref='0') Contract(ref='0') PaymentMethod Contract(ref='0')
+PaperlessBilling(ref='0');
+  model churn = SeniorCitizen tenure MultipleLines InternetService OnlineSecurity TechSupport StreamingTV StreamingMovies Contract PaperlessBilling PaymentMethod MonthlyCharges TotalCharges;
+     /selection=forward(select=aic) hierarchy=single showpvalues ;
+ performance buildsscp=incremental;
+run;
+ods rtf file='result';
+
+/* Backward selection with significant level of coefficients as criteria */
+proc glmselect data=Churn_training testdata=Churn_test plots=all;
+  class SeniorCitizen(ref='0') MultipleLines(ref='0') InternetService(ref='0')
+OnlineSecurity(ref='0') TechSupport(ref='0') StreamingTV(ref='0') StreamingMovies(ref='0') Contract(ref='0') PaymentMethod Contract(ref='0')
+PaperlessBilling(ref='0');
+  model churn = SeniorCitizen tenure MultipleLines InternetService OnlineSecurity TechSupport StreamingTV StreamingMovies Contract PaperlessBilling PaymentMethod MonthlyCharges TotalCharges
+     /selection=backward(select=aic) hierarchy=single showpvalues ;
+ performance buildsscp=incremental;
+run;
+ods rtf file='result';
+
+
+/*Round 1 of Backward Modeling*/
+proc logistic data = Churn;
+model Churn (event= '1') = gender SeniorCitizen Partner Dependents tenure PhoneService MultipleLines InternetService OnlineSecurity OnlineBackup DeviceProtection TechSupport StreamingTV StreamingMovies Contract PaperlessBilling PaymentMethod MonthlyCharges TotalCharges;
+ods output ParameterEstimates = model_gender model_SeniorCitizen model_Partner model_Dependents model_tenure model_PhoneService model_MultipleLines model_InternetService model_OnlineSecurity model_OnlineBackup model_DeviceProtection model_TechSupport model_StreamingTV model_StreamingMovies model_Contract model_PaperlessBilling model_PaymentMethod model_MonthlyCharges model_TotalCharges;
+run;
+
+
+
+/*Round 2 of Backward Modeling */
+proc logistic data = Churn;
+model Churn (event= '1') = SeniorCitizen tenure MultipleLines InternetService OnlineSecurity TechSupport StreamingTV StreamingMovies Contract PaperlessBilling PaymentMethod MonthlyCharges TotalCharges;
+ods output ParameterEstimates = model_SeniorCitizen model_tenure model_MultipleLines model_InternetService model_OnlineSecurity model_TechSupport model_StreamingTV model_StreamingMovies model_Contract model_PaperlessBilling model_PaymentMethod model_MonthlyCharges model_TotalCharges;
+run;
+ 
+/* Stepwise selection */
+proc glmselect data=Churn_training testdata=Churn_test plots=all;
+  class SeniorCitizen(ref='0') MultipleLines(ref='0') InternetService(ref='0')
+OnlineSecurity(ref='0') TechSupport(ref='0') StreamingTV(ref='0') StreamingMovies(ref='0') Contract(ref='0') PaymentMethod Contract(ref='0')
+PaperlessBilling(ref='0');
+  model churn = SeniorCitizen tenure MultipleLines InternetService OnlineSecurity TechSupport StreamingTV StreamingMovies Contract PaperlessBilling PaymentMethod MonthlyCharges TotalCharges
+     /selection=stepwise(select=aic) hierarchy=single showpvalues ;
+ performance buildsscp=incremental;
+run;
+ods rtf file='result';
+
+
+/* Logistic Regression */
+proc logistic data=Churn_sampled;
+class SeniorCitizen(ref='0') MultipleLines(ref='0') InternetService(ref='0')
+OnlineSecurity(ref='0') TechSupport(ref='0') StreamingTV(ref='0') StreamingMovies(ref='0') Contract(ref='0') PaymentMethod Contract(ref='0')
+PaperlessBilling(ref='0');
+ logit: model churn (event='1') = SeniorCitizen tenure MultipleLines InternetService OnlineSecurity TechSupport StreamingTV StreamingMovies Contract PaperlessBilling PaymentMethod MonthlyCharges TotalCharges;
+run;
+quit;
+ ods rtf close;
+ ods rtf file='result';
+
+proc logistic data=Churn_sampled;
+class SeniorCitizen(ref='0') MultipleLines(ref='0') InternetService(ref='0')
+OnlineSecurity(ref='0') TechSupport(ref='0') StreamingTV(ref='0') StreamingMovies(ref='0') Contract(ref='0') PaymentMethod Contract(ref='0')
+PaperlessBilling(ref='0');
+ logit: model churn (event='1') = SeniorCitizen tenure MultipleLines InternetService OnlineSecurity TechSupport StreamingTV StreamingMovies Contract PaperlessBilling PaymentMethod MonthlyCharges TotalCharges
+ Contract*tenure PaymentMethod*PaperlessBilling MultipleLines*InternetService TechSupport*OnlineSecurity TotalCharges*MonthlyCharges;
+run;
+quit;
+ ods rtf close;
+ ods rtf file='result';
+
+
+
+/* Probit Regression */
+ 
+proc logistic data=Churn_training outmodel=Probitmodel;
+class SeniorCitizen(ref='0') MultipleLines(ref='0') InternetService(ref='0')
+OnlineSecurity(ref='0') TechSupport(ref='0') StreamingTV(ref='0') StreamingMovies(ref='0') Contract(ref='0') PaymentMethod Contract(ref='0')
+PaperlessBilling(ref='0');
+ logit: model churn (event='1') = SeniorCitizen tenure MultipleLines InternetService OnlineSecurity TechSupport StreamingTV StreamingMovies Contract PaperlessBilling PaymentMethod MonthlyCharges TotalCharges;
+run;
+ ods rtf close;
+
+
+/*Or for probit they can do */
+
+proc probit data=Churn_training ;
+class SeniorCitizen(ref='0') MultipleLines(ref='0') InternetService(ref='0')
+OnlineSecurity(ref='0') TechSupport(ref='0') StreamingTV(ref='0') StreamingMovies(ref='0') Contract(ref='0') PaymentMethod Contract(ref='0')
+PaperlessBilling(ref='0');
+ probit: model churn (event='1') = SeniorCitizen tenure MultipleLines InternetService OnlineSecurity TechSupport StreamingTV StreamingMovies Contract PaperlessBilling PaymentMethod MonthlyCharges TotalCharges
+Contract*tenure PaymentMethod*PaperlessBilling MultipleLines*InternetService TechSupport*OnlineSecurity TotalCharges*MonthlyCharges ;
+run;
+ ods rtf close;
+
+
+/*Or for probit they can do */
+
+proc probit data=Churn_training ;
+class SeniorCitizen(ref='0') MultipleLines(ref='0') InternetService(ref='0')
+OnlineSecurity(ref='0') TechSupport(ref='0') StreamingTV(ref='0') StreamingMovies(ref='0') Contract(ref='0') PaymentMethod Contract(ref='0')
+PaperlessBilling(ref='0');
+ probit: model churn (event='1') = SeniorCitizen tenure MultipleLines InternetService OnlineSecurity TechSupport StreamingTV StreamingMovies Contract PaperlessBilling PaymentMethod MonthlyCharges TotalCharges
+Contract*tenure PaymentMethod*PaperlessBilling MultipleLines*InternetService TechSupport*OnlineSecurity TotalCharges*MonthlyCharges ;
+run;
+
+
+
+
+/* Classification and ROC */
+/* To plot ROC curve based on predictions from linear model */
+ ods rtf file='result';
+proc logistic data=Churn_sampled plots=roc(id=prob);
+class SeniorCitizen(ref='0') MultipleLines(ref='0') InternetService(ref='0')
+OnlineSecurity(ref='0') TechSupport(ref='0') StreamingTV(ref='0') StreamingMovies(ref='0') Contract(ref='0') PaymentMethod Contract(ref='0')
+PaperlessBilling(ref='0');
+ logit: model churn (event='1') = SeniorCitizen tenure MultipleLines InternetService OnlineSecurity TechSupport StreamingTV StreamingMovies Contract PaperlessBilling PaymentMethod MonthlyCharges TotalCharges;
+ roc 'all'  SeniorCitizen tenure MultipleLines InternetService OnlineSecurity TechSupport StreamingTV StreamingMovies Contract PaperlessBilling PaymentMethod MonthlyCharges TotalCharges;
+ roc 'SeniorCitizen' SeniorCitizen;
+ roc  'tenure' tenure;
+ roc  'MultipleLines' MultipleLines;
+ roc 'InternetService' InternetService;
+ roc  'OnlineSecurity' OnlineSecurity;
+ roc 'TechSupport' TechSupport;
+ roc 'StreamingTV' StreamingTV;
+ roc 'StreamingMovies' StreamingMovies;
+ roc 'Contract' Contract;
+ roc 'PaperlessBilling' PaperlessBilling;
+ roc 'PaymentMethod' PaymentMethod;
+ roc 'MonthlyCharges' MonthlyCharges;
+ roc 'TotalCharges' TotalCharges;
+ where selected=0;
+run;
+ ods rtf close;
+
+proc glm data=Churn_sampled ;
+ class SeniorCitizen(ref='0') MultipleLines(ref='0') InternetService(ref='0')
+OnlineSecurity(ref='0') TechSupport(ref='0') StreamingTV(ref='0') StreamingMovies(ref='0') Contract(ref='0') PaymentMethod Contract(ref='0')
+PaperlessBilling(ref='0');
+  model churn = SeniorCitizen tenure MultipleLines InternetService OnlineSecurity TechSupport StreamingTV StreamingMovies Contract PaperlessBilling PaymentMethod MonthlyCharges TotalCharges
+weight selected;
+output out=Churn_lin_predict p=linear_predictions; /* predictions are made for all observations - training and test */
+quit;
+ods graphics on;
+/* To plot ROC curve based on predictions from linear model */
+proc logistic data=Churn_lin_predict plots=roc(id=prob);
+ class SeniorCitizen(ref='0') MultipleLines(ref='0') InternetService(ref='0')
+OnlineSecurity(ref='0') TechSupport(ref='0') StreamingTV(ref='0') StreamingMovies(ref='0') Contract(ref='0') PaymentMethod Contract(ref='0')
+PaperlessBilling(ref='0');
+ logit: model churn (event='1') = SeniorCitizen tenure MultipleLines InternetService OnlineSecurity TechSupport StreamingTV StreamingMovies Contract PaperlessBilling PaymentMethod MonthlyCharges TotalCharges;
+ roc pred=linear_predictions;
+ where selected=0;
+run;
+
+
